@@ -1,47 +1,37 @@
 import React, {useEffect, useState} from 'react';
-import {Form, Button, Table, Typography} from 'antd';
-import {EditableCell} from './EditableCell';
-import {Actions} from './Actions'
+import {Form, Button, Table} from 'antd';
+import {EditableCell} from './components/Table/EditableCell';
+import {TotalCount} from './components/Table/TotalCount';
+import {DefaultActions} from './components/Table/DefaultActions';
+import {DropdownActions} from './components/Table/DropdownActions';
+import {getFromLocaleStorage, setToLocaleStorage, replaceDate} from './helpers/locale-storage';
+import {getFormattedDate, sortDate} from './helpers/date';
 
-const getFormattedDate = (date) => {
-    return new Intl.DateTimeFormat('en-GB').format(date)
-}
+const components = {
+    body: {
+        cell: EditableCell,
+    },
+};
 
 const App = () => {
     const [form] = Form.useForm();
     const [data, setData] = useState([]);
     const [editingKey, setEditingKey] = useState('');
-
-    const isEditing = (record) => record.key === editingKey;
-
+    const checkIsEditing = (record) => record.key === editingKey;
 
     useEffect(() => {
-        const data = JSON.parse(localStorage.getItem('data'), (key, value) => {
-            if (key === 'date') {
-                return new Date(value);
-            }
-
-            return value
-        })
-
-        setData(data || []);
+        setData(getFromLocaleStorage('data', replaceDate) || []);
     }, [])
 
-    const edit = (record) => {
-        form.setFieldsValue({
-            ...record,
-        });
+    const handleEdit = (record) => {
+        form.setFieldsValue(record);
         setEditingKey(record.key);
     };
 
-    const cancel = () => {
-        setEditingKey('');
-    };
+    const handleDelete = (key) => {
+        const updatedData = data.filter((item) => item.key !== key);
 
-    const handleDelete = (record) => {
-        const newData = data.filter((item) => item.key !== record.key);
-
-        setData(newData);
+        setData(updatedData);
     };
 
     const columns = [
@@ -49,29 +39,18 @@ const App = () => {
             title: 'Date',
             dataIndex: 'date',
             editable: true,
-            render: (_, record) => getFormattedDate(record.date),
+            width: '15%',
+            render: (_, {date}) => getFormattedDate(date),
             sorter: {
-                compare: (a, b) => {
-                    const dateA = new Date(a.date);
-                    const dateB = new Date(b.date);
-
-                    if (dateA < dateB) {
-                        return -1;
-                    }
-
-                    if (dateA > dateB) {
-                        return 1;
-                    }
-
-                    return 0
-                },
+                compare: sortDate,
             },
         },
         {
             title: 'Amount',
             dataIndex: 'amount',
             editable: true,
-            render: (_, record) => `${record.amount}$`,
+            width: '20%',
+            render: (_, {amount}) => `${amount}$`,
             sorter: {
                 compare: (a, b) => a.amount - b.amount,
             },
@@ -80,29 +59,27 @@ const App = () => {
             title: 'Type',
             dataIndex: 'type',
             editable: true,
+            width: '20%',
         },
         {
             title: 'Note',
             dataIndex: 'note',
             editable: true,
+            width: '25%',
         },
         {
             title: 'Actions',
             dataIndex: 'actions',
+            align: 'end',
             render: (_, record) => {
-                const isEdited = isEditing(record);
+                const isEditing = checkIsEditing(record);
 
-                const onEdit = () => edit(record)
-                const onDelete = () => handleDelete(record)
+                const onEdit = () => handleEdit(record);
+                const onDelete = () => handleDelete(record.key);
 
-
-                return (
-                    <Actions
-                        isEditing={isEdited}
-                        onEdit={onEdit}
-                        onDelete={onDelete}
-                    />
-                );
+                return isEditing
+                    ? <DefaultActions onDelete={onDelete} />
+                    : <DropdownActions onEdit={onEdit} onDelete={onDelete} />
             },
         },
     ];
@@ -117,25 +94,23 @@ const App = () => {
             onCell: (record) => ({
                 record,
                 dataIndex: col.dataIndex,
-                editing: isEditing(record),
+                isEditing: checkIsEditing(record),
             }),
         };
     });
 
     const onClick = () => {
-        form.resetFields();
         const key = new Date().valueOf();
 
-        setData((table) => [...table, {
-            key,
-        }]);
+        form.resetFields();
+        setData((prevData) => [...prevData, {key}]);
         setEditingKey(key);
     }
 
     const onFinish = (values) => {
         const {type, amount = 0} = values;
-        const updatedDataSource = data.map((elem) => {
-            if (isEditing(elem)) {
+        const updatedData = data.map((elem) => {
+            if (checkIsEditing(elem)) {
                 return {
                     ...values,
                     amount: type === 'expense' ? amount * (-1) : amount,
@@ -146,49 +121,34 @@ const App = () => {
             return elem;
         })
 
-        localStorage.setItem('data', JSON.stringify(updatedDataSource));
-
-        setData(updatedDataSource);
-        cancel();
+        setToLocaleStorage('data', updatedData);
+        setData(updatedData);
+        setEditingKey('');
     }
 
     return (
-        <div>
-            <Button onClick={onClick}>Add new</Button>
+        <div style={{margin: '16px'}}>
+            <Button style={{marginBottom: '16px'}} onClick={onClick}>
+                Add new
+            </Button>
             <Form form={form} onFinish={onFinish}>
                 <Table
-                    components={{
-                        body: {
-                            cell: EditableCell,
-                        },
-                    }}
+                    components={components}
                     summary={(pageData) => {
                         const total = pageData.reduce((sum, {amount}) => (
                             sum += amount
-                        ), 0) || 0;
+                        ), 0);
 
-                        return (
-                            <Table.Summary.Row>
-                                <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
-                                <Table.Summary.Cell index={1} />
-                                <Table.Summary.Cell index={2} />
-                                <Table.Summary.Cell index={3} />
-                                <Table.Summary.Cell index={4}>
-                                    <Typography.Text>{total}</Typography.Text>
-                                </Table.Summary.Cell>
-                            </Table.Summary.Row>
-                        );
+                        return <TotalCount total={total || 0} />
                     }}
                     dataSource={data}
                     columns={mergedColumns}
-                    rowClassName="editable-row"
-                    pagination={{
-                        onChange: cancel,
-                    }}
+                    pagination={false}
+
                 />
             </Form>
         </div>
-
     );
 };
+
 export default App;

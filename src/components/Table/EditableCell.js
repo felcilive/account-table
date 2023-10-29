@@ -1,10 +1,10 @@
 import {Form, Input, DatePicker, InputNumber, Select} from 'antd';
 
 export const EditableCell = ({
-    editing,
     dataIndex,
     record,
     children,
+    isEditing,
     ...restProps
 }) => {
     let inputNode = <Input />;
@@ -24,7 +24,7 @@ export const EditableCell = ({
 
     return (
         <td {...restProps}>
-            {editing ? (
+            {isEditing ? (
                 <Form.Item name={dataIndex}>
                     {inputNode}
                 </Form.Item>
